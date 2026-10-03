@@ -46,16 +46,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $installer = Join-Path$env:RUNNER_TEMP "cuda_12.8.0_windows.exe"
-          Invoke-WebRequest `
-            -Uri "https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe" `
-            -OutFile $installer
+          $installer = Join-Path $env:RUNNER_TEMP "cuda_12.8.0_windows.exe"
+          Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe" -OutFile $installer
 
-          Start-Process `
-            -FilePath $installer `
-            -ArgumentList "-y", "-s", "-accepteula", "-toolkit", "-override", "-noDisplayDriver" `
-            -Wait `
-            -NoNewWindow
+          Start-Process -FilePath $installer -ArgumentList "-y", "-s", "-accepteula", "-toolkit", "-override", "-noDisplayDriver" -Wait -NoNewWindow
 
           if (-not (Test-Path "$env:CUDA_INSTALL\bin\nvcc.exe")) {
             throw "CUDA 12.8 installation did not produce nvcc.exe"
@@ -92,7 +86,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $vcpkg = Join-Path (Split-Path$env:GITHUB_WORKSPACE -Parent) "vcpkg"
+          $vcpkg = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "vcpkg"
 
           if (-not (Test-Path "$vcpkg\vcpkg.exe")) {
             if (Test-Path $vcpkg) {
@@ -131,7 +125,7 @@ jobs:
       - name: Verify executable
         shell: pwsh
         run: |
-          $exe = Join-Path$env:GITHUB_WORKSPACE "build\${{ inputs.configuration }}\LichtFeld-Studio.exe"
+          $exe = Join-Path $env:GITHUB_WORKSPACE "build\${{ inputs.configuration }}\LichtFeld-Studio.exe"
           if (-not (Test-Path $exe)) {
             Write-Host "Expected executable was not found at $exe"
             Write-Host "Searching build tree..."
@@ -146,9 +140,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $src = Join-Path$env:GITHUB_WORKSPACE "build\${{ inputs.configuration }}"
-          $stage = Join-Path$env:RUNNER_TEMP "LichtFeld-Studio"
-          $zip = Join-Path$env:GITHUB_WORKSPACE "LichtFeld-Studio-windows-x64-${{ inputs.configuration }}-${{ inputs.ref }}.zip"
+          $src = Join-Path $env:GITHUB_WORKSPACE "build\${{ inputs.configuration }}"
+          $stage = Join-Path $env:RUNNER_TEMP "LichtFeld-Studio"
+          $zip = Join-Path $env:GITHUB_WORKSPACE "LichtFeld-Studio-windows-x64-${{ inputs.configuration }}-${{ inputs.ref }}.zip"
 
           if (Test-Path $stage) {
             Remove-Item -Recurse -Force $stage
