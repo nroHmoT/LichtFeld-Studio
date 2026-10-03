@@ -107,6 +107,9 @@ jobs:
           restore-keys: |
             vcpkg-packages-windows-
 
+      - name: Set up Visual Studio Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build Release/Debug with upstream build script
         shell: pwsh
         run: |
