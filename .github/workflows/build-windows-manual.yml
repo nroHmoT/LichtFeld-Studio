@@ -111,16 +111,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $args = @(
-            "-Configuration", "${{ inputs.configuration }}",
-            "-SkipVerification"
-          )
 
-          if ("${{ inputs.configuration }}" -eq "Release") {
-            $args += "-Clean"
+          $params = @{
+            Configuration    = "${{ inputs.configuration }}"
+            SkipVerification = $true
           }
 
-          & "$env:GITHUB_WORKSPACE\build_lichtfeld.ps1" @args
+          if ("${{ inputs.configuration }}" -eq "Release") {
+            $params["Clean"] = $true
+          }
+
+          & "$env:GITHUB_WORKSPACE\build_lichtfeld.ps1" @params
 
       - name: Verify executable
         shell: pwsh
