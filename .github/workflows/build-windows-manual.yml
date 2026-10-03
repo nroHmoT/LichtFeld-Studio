@@ -107,6 +107,12 @@ jobs:
           restore-keys: |
             vcpkg-packages-windows-
 
+      - name: Cache LibTorch binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\external
+          key: libtorch-windows-cuda12.8-v1
+
       - name: Set up Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
 
