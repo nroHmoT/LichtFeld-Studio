@@ -27,7 +27,7 @@ jobs:
   build:
     name: Windows x64 / CUDA 12.8 / ${{ inputs.configuration }}
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       CUDA_VERSION: "12.8.0"
@@ -121,11 +121,27 @@ jobs:
           restore-keys: |
             vcpkg-packages-windows-
 
-      - name: Cache LibTorch binaries
+      - name: Cache LibTorch Binaries
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}\external
           key: libtorch-windows-cuda12.8-v1
+
+      - name: Build Release/Debug with upstream build script
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $params = @{
+            Configuration    = "${{ inputs.configuration }}"
+            SkipVerification = $true
+          }
+
+          if ("${{ inputs.configuration }}" -eq "Release") {
+            $params["Clean"] = $true
+          }
+
+          & "$env:GITHUB_WORKSPACE\build_lichtfeld.ps1" @params
 
       - name: Set up Visual Studio Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
