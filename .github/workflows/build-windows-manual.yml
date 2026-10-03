@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}\..\vcpkg
-          key: vcpkg-tool-windows-2022-2026-10
+          key: vcpkg-tool-windows-2022-full-history
           restore-keys: |
             vcpkg-tool-windows-2022-
 
@@ -88,12 +88,26 @@ jobs:
           $ErrorActionPreference = "Stop"
           $vcpkg = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "vcpkg"
 
-          if (-not (Test-Path "$vcpkg\vcpkg.exe")) {
+          if (-not (Test-Path "$vcpkg\.git")) {
             if (Test-Path $vcpkg) {
               Remove-Item -Recurse -Force $vcpkg
             }
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkg
+            # Clone full repository history (do NOT use --depth 1)
+            git clone https://github.com/microsoft/vcpkg.git $vcpkg
             & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          } else {
+            # Ensure depth-1 cached installations are converted to full history
+            Push-Location $vcpkg
+            try {
+              $isShallow = (git rev-parse --is-shallow-repository) -eq "true"
+              if ($isShallow) {
+                git fetch --unshallow origin
+              } else {
+                git fetch origin
+              }
+            } finally {
+              Pop-Location
+            }
           }
 
           Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$vcpkg"
