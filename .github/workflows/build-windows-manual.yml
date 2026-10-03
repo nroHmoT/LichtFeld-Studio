@@ -1,136 +1,53 @@
-name: Build LichtFeld Studio for Windows
+name: Build Lichtfeld Studio (Windows)
 
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Git ref to build (branch, tag, or commit)"
-        required: true
-        default: "master"
       configuration:
-        description: "Build configuration"
+        description: 'Build Configuration (Release or Debug)'
         required: true
+        default: 'Release'
         type: choice
         options:
           - Release
           - Debug
-        default: Release
-
-permissions:
-  contents: read
-
-concurrency:
-  group: lichtfeld-windows-${{ github.ref }}-${{ inputs.ref }}
-  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Windows x64 / CUDA 12.8 / ${{ inputs.configuration }}
+  build-windows:
+    name: Build on Windows
     runs-on: windows-2022
     timeout-minutes: 180
 
-    env:
-      CUDA_VERSION: "12.8.0"
-      CUDA_INSTALL: "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8"
-      VCPKG_DEFAULT_BINARY_CACHE: "${{ github.workspace }}\\..\\vcpkg-binary-cache"
-
     steps:
-      - name: Checkout LichtFeld Studio
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0
           submodules: recursive
 
-      - name: Install CUDA Toolkit 12.8
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $installer = Join-Path $env:RUNNER_TEMP "cuda_12.8.0_windows.exe"
-          Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe" -OutFile $installer
-
-          Start-Process -FilePath $installer -ArgumentList "-y", "-s", "-accepteula", "-toolkit", "-override", "-noDisplayDriver" -Wait -NoNewWindow
-
-          if (-not (Test-Path "$env:CUDA_INSTALL\bin\nvcc.exe")) {
-            throw "CUDA 12.8 installation did not produce nvcc.exe"
-          }
-
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:CUDA_INSTALL\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:CUDA_INSTALL\libnvvp"
-
-          Add-Content -Path $env:GITHUB_ENV -Value "CUDA_PATH=$env:CUDA_INSTALL"
-          Add-Content -Path $env:GITHUB_ENV -Value "CUDA_PATH_V12_8=$env:CUDA_INSTALL"
-
-          & "$env:CUDA_INSTALL\bin\nvcc.exe" --version
-
-      - name: Show build tool versions
-        shell: pwsh
-        run: |
-          cmake --version
-          git --version
-          where.exe msbuild
-          where.exe clang-cl
-          where.exe perl
-          nvcc --version
-
-      - name: Cache vcpkg tool
-        id: vcpkg-tool-cache
-        uses: actions/cache@v4
+      # 1. Initialize Visual Studio Developer Environment Variables
+      - name: Set up Visual Studio Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          path: ${{ github.workspace }}\..\vcpkg
-          key: vcpkg-tool-windows-2022-full-history
-          restore-keys: |
-            vcpkg-tool-windows-2022-
+          arch: x64
 
-      - name: Setup vcpkg
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vcpkg = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) "vcpkg"
-
-          if (-not (Test-Path "$vcpkg\.git")) {
-            if (Test-Path $vcpkg) {
-              Remove-Item -Recurse -Force $vcpkg
-            }
-            # Clone full repository history (do NOT use --depth 1)
-            git clone https://github.com/microsoft/vcpkg.git $vcpkg
-            & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
-          } else {
-            # Ensure depth-1 cached installations are converted to full history
-            Push-Location $vcpkg
-            try {
-              $isShallow = (git rev-parse --is-shallow-repository) -eq "true"
-              if ($isShallow) {
-                git fetch --unshallow origin
-              } else {
-                git fetch origin
-              }
-            } finally {
-              Pop-Location
-            }
-          }
-
-          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_ROOT=$vcpkg"
-          Add-Content -Path $env:GITHUB_PATH -Value "$vcpkg"
-
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}\..\vcpkg-binary-cache
-          key: vcpkg-packages-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/VcpkgProfiles.cmake') }}
-          restore-keys: |
-            vcpkg-packages-windows-
-
-      - name: Cache LibTorch Binaries
+      # 2. Cache LibTorch to avoid mid-download timeouts
+      - name: Cache External LibTorch Binaries
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}\external
-          key: libtorch-windows-cuda12.8-v1
+          key: libtorch-windows-cuda-v1-${{ hashFiles('build_lichtfeld.ps1') }}
+          restore-keys: |
+            libtorch-windows-cuda-v1-
 
-      - name: Build Release/Debug with upstream build script
+      # 3. Execute Build Script with MSVC and Skip Verification
+      - name: Build Lichtfeld Studio
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
+          # Print environment paths for build logging
+          Write-Host "VSINSTALLDIR: $env:VSINSTALLDIR"
+          Write-Host "VCToolsInstallDir: $env:VCToolsInstallDir"
 
           $params = @{
             Configuration    = "${{ inputs.configuration }}"
@@ -142,68 +59,3 @@ jobs:
           }
 
           & "$env:GITHUB_WORKSPACE\build_lichtfeld.ps1" @params
-
-      - name: Set up Visual Studio Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build Release/Debug with upstream build script
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $params = @{
-            Configuration    = "${{ inputs.configuration }}"
-            SkipVerification = $true
-          }
-
-          if ("${{ inputs.configuration }}" -eq "Release") {
-            $params["Clean"] = $true
-          }
-
-          & "$env:GITHUB_WORKSPACE\build_lichtfeld.ps1" @params
-
-      - name: Verify executable
-        shell: pwsh
-        run: |
-          $exe = Join-Path $env:GITHUB_WORKSPACE "build\${{ inputs.configuration }}\LichtFeld-Studio.exe"
-          if (-not (Test-Path $exe)) {
-            Write-Host "Expected executable was not found at $exe"
-            Write-Host "Searching build tree..."
-            Get-ChildItem "$env:GITHUB_WORKSPACE\build" -Recurse -Filter "LichtFeld-Studio.exe" |
-              Select-Object -ExpandProperty FullName
-            throw "LichtFeld-Studio.exe was not produced."
-          }
-
-          Get-Item $exe | Format-List FullName,Length,LastWriteTime
-
-      - name: Create Windows ZIP
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $src = Join-Path $env:GITHUB_WORKSPACE "build\${{ inputs.configuration }}"
-          $stage = Join-Path $env:RUNNER_TEMP "LichtFeld-Studio"
-          $zip = Join-Path $env:GITHUB_WORKSPACE "LichtFeld-Studio-windows-x64-${{ inputs.configuration }}-${{ inputs.ref }}.zip"
-
-          if (Test-Path $stage) {
-            Remove-Item -Recurse -Force $stage
-          }
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-
-          Copy-Item "$src\*" $stage -Recurse -Force
-
-          Copy-Item "$env:GITHUB_WORKSPACE\LICENSE" $stage -Force
-          if (Test-Path "$env:GITHUB_WORKSPACE\THIRD_PARTY_LICENSES.md") {
-            Copy-Item "$env:GITHUB_WORKSPACE\THIRD_PARTY_LICENSES.md" $stage -Force
-          }
-
-          Compress-Archive -Path "$stage\*" -DestinationPath $zip -CompressionLevel Optimal -Force
-
-          Get-Item $zip | Format-List FullName,Length,LastWriteTime
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: LichtFeld-Studio-windows-x64-${{ inputs.configuration }}
-          path: LichtFeld-Studio-windows-x64-*.zip
-          if-no-files-found: error
-          retention-days: 14
